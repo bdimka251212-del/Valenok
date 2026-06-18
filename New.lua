@@ -7,6 +7,21 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bdimk
 local ThemeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/bdimka251212-del/NewLib/refs/heads/main/addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/bdimka251212-del/NewLib/refs/heads/main/addons/SaveManager.lua"))()
 
+-- Services
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = game:GetService("Workspace").CurrentCamera
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+local Debris = game:GetService("Debris")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+-- Forward declarations
+local restoreAllRapidFireRates
+
 -- Runtime states (must be declared before UI)
 local RapidFireState = {
     SavedFireRates = {},
@@ -233,6 +248,13 @@ RageSections.AntiAim:AddDropdown('AntiAimYawMode', {Values = { 'Local', 'At targ
 RageSections.AntiAim:AddSlider('AntiAimYawValue', {Text = 'Yaw value', Default = 0, Min = -180, Max = 180, Rounding = 0})
 
 
+-- Manual Anti Aim
+RageSections.AntiAim:AddToggle('AntiAimManual', {Text = 'Manual Anti aim', Default = false})
+
+
+RageSections.AntiAim:AddDropdown('AntiAimManualDirection', {Values = { 'Right', 'Left' }, Default = 'Right', Text = 'Manual direction'})
+
+
 -- Gun Mods UI
 RageSections.GunMods:AddToggle('GunModsNoRecoil', {Text = 'No recoil', Default = false, Callback = function(Value)
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -404,6 +426,8 @@ VisualSections.ESP:AddLabel('Weapon color'):AddColorPicker('ESPWeaponColor', {De
 
 VisualSections.ESP:AddLabel('Chams color'):AddColorPicker('ESPChamsColor', {Default = Color3.fromRGB(255, 255, 255), Title = 'Chams color'})
 
+VisualSections.ESP:AddLabel('Health bar color'):AddColorPicker('ESPHealthBarColor', {Default = Color3.fromRGB(0, 255, 0), Title = 'Health bar color'})
+
 
 -- Menu UI
 VisualSections.Menu:AddToggle('MenuBindList', {Text = 'Bind list', Default = true, Callback = function(Value) if Library.KeybindFrame then Library.KeybindFrame.Visible = Value end end})
@@ -433,32 +457,6 @@ VisualSections.Self:AddToggle('SelfFOVEnable', {Text = 'FOV', Default = false})
 
 -- FOV slider
 VisualSections.Self:AddSlider('SelfFOV', {Text = 'FOV value', Default = 70, Min = 30, Max = 120, Rounding = 0})
-
-
--- Hand chams
-VisualSections.Self:AddToggle('SelfHandChams', {Text = 'Hand chams', Default = false})
-
-
-VisualSections.Self:AddDropdown('SelfHandChamsMaterial', {Values = { 'Smooth plastic', 'Force field', 'Neon' }, Default = 'Smooth plastic', Text = 'Hand chams material'})
-
-
-VisualSections.Self:AddSlider('SelfHandChamsTransparency', {Text = 'Hand chams transparency', Default = 0, Min = 0, Max = 100, Rounding = 0})
-
-
--- Weapon chams
-VisualSections.Self:AddToggle('SelfWeaponChams', {Text = 'Weapon chams', Default = false})
-
-
-VisualSections.Self:AddDropdown('SelfWeaponChamsMaterial', {Values = { 'Smooth plastic', 'Force field', 'Neon' }, Default = 'Smooth plastic', Text = 'Weapon chams material'})
-
-
-VisualSections.Self:AddSlider('SelfWeaponChamsTransparency', {Text = 'Weapon chams transparency', Default = 0, Min = 0, Max = 100, Rounding = 0})
-
-
--- Self colors
-VisualSections.Self:AddLabel('Hand chams color'):AddColorPicker('SelfHandChamsColor', {Default = Color3.fromRGB(255, 255, 255), Title = 'Hand chams color'})
-
-VisualSections.Self:AddLabel('Weapon chams color'):AddColorPicker('SelfWeaponChamsColor', {Default = Color3.fromRGB(255, 255, 255), Title = 'Weapon chams color'})
 
 
 -- Third Person UI
@@ -538,6 +536,7 @@ VisibilityParams.IgnoreWater = true
 
 
 -- Namecall hook
+local PlayHitSound
 local _oldNamecall = nil
 local function restoreNamecallHook()
     pcall(function()
@@ -627,30 +626,6 @@ pcall(function()
             end
         end
 
-        if method == "FireServer" and self.Name == "ReplicateShot" then
-            spawn(function()
-                pcall(function()
-                    if Toggles.MiscHitSound and Toggles.MiscHitSound.Value then
-                        local sound = Instance.new("Sound", Workspace)
-                        local soundType = Options.MiscHitSoundType and Options.MiscHitSoundType.Value or "Skeet"
-                        local volume = Options.MiscHitSoundVolume and Options.MiscHitSoundVolume.Value or 5
-                        local source = HitSounds[soundType]
-                        if source then
-                            if type(source) == "table" then
-                                sound.SoundId = source[math.random(1, #source)]
-                            else
-                                sound.SoundId = source
-                            end
-                            sound.SoundId = sound.SoundId or "rbxassetid://3124331820"
-                            sound.Volume = volume
-                            sound.PlayOnRemove = true
-                            sound:Destroy()
-                        end
-                    end
-                end)
-            end)
-        end
-
         return _oldNamecall(self, ...)
     end))
 end)
@@ -665,19 +640,6 @@ for i = 1, 164 do
     ln.Color = Color3.fromRGB(255, 255, 255)
     AimRuntime.FovLines[i] = ln
 end
-
-
--- Services
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Camera = game:GetService("Workspace").CurrentCamera
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local SoundService = game:GetService("SoundService")
-local Debris = game:GetService("Debris")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 
 
 -- Find KillAll remote
@@ -714,7 +676,7 @@ local HitSounds = {
     }
 }
 
-local function PlayHitSound(soundType, volume)
+PlayHitSound = function(soundType, volume)
     local sound = Instance.new("Sound")
     local source = HitSounds[soundType]
     if not source then return end
@@ -885,7 +847,7 @@ end
 
 
 -- Restore rapid fire
-local function restoreAllRapidFireRates()
+restoreAllRapidFireRates = function()
     local Weapons = ReplicatedStorage:FindFirstChild("Weapons")
     if Weapons then
         for weaponName, original in pairs(RapidFireState.SavedFireRates) do
@@ -1670,8 +1632,10 @@ local originalWalkSpeed = 16
 local function updateAntiAim()
     local PitchEnabled = Toggles.AntiAimPitch and Toggles.AntiAimPitch.Value
     local YawEnabled = Toggles.AntiAimYaw and Toggles.AntiAimYaw.Value
+    local ManualEnabled = Toggles.AntiAimManual and Toggles.AntiAimManual.Value
     local YawMode = Options.AntiAimYawMode and Options.AntiAimYawMode.Value or "Local"
     local YawValue = Options.AntiAimYawValue and Options.AntiAimYawValue.Value or 0
+    local ManualDirection = Options.AntiAimManualDirection and Options.AntiAimManualDirection.Value or "Right"
     local PitchMode = Options.AntiAimPitchMode and Options.AntiAimPitchMode.Value or "None"
 
     local character = LocalPlayer.Character
@@ -1680,7 +1644,7 @@ local function updateAntiAim()
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if not (humanoid and rootPart) or humanoid.Health <= 0 then return end
 
-    if not PitchEnabled and not YawEnabled then
+    if not PitchEnabled and not YawEnabled and not ManualEnabled then
         humanoid.AutoRotate = true
         getgenv().ValenokPitchDownEnabled = false
         return
@@ -1763,6 +1727,17 @@ local function updateAntiAim()
         end
     else
         humanoid.AutoRotate = true
+    end
+
+    if ManualEnabled then
+        humanoid.AutoRotate = false
+        local manualYaw = ManualDirection == "Right" and 90 or -90
+        local manualYawRad = math.rad(manualYaw)
+        local camLook = Camera.CFrame.LookVector
+        local lookVector = Vector3.new(camLook.X, 0, camLook.Z).Unit
+        if lookVector.Magnitude > 0 then
+            rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + lookVector) * CFrame.Angles(0, manualYawRad, 0)
+        end
     end
 end
 
@@ -1900,7 +1875,7 @@ local function updateKillAll()
 
     local camPos = Camera.CFrame.p
     local srvTime = Workspace:GetServerTimeNow()
-    local burstCount = 3
+    local burstCount = 1
     local nanBypass = true
 
     for _, plr in pairs(Players:GetPlayers()) do
@@ -2160,7 +2135,7 @@ Library.KeybindFrame.Visible = true
 local DrawingFont = Drawing.Fonts.UI
 
 -- Triggerbot helpers
-local function isEnemy(Player)
+local function isTriggerEnemy(Player)
     if Player == LocalPlayer then return false end
 
     if Toggles.TriggerbotTeamCheck and Toggles.TriggerbotTeamCheck.Value then
@@ -2179,36 +2154,6 @@ local function isEnemy(Player)
     return true
 end
 
-
--- Triggerbot visibility
-local function isStrictRayVisible(TargetPart)
-    if not TargetPart or not TargetPart.Parent then return false end
-
-    local Origin = Camera.CFrame.Position
-    local Direction = TargetPart.Position - Origin
-
-    local ignoreList = {Camera}
-    if LocalPlayer.Character then
-        table.insert(ignoreList, LocalPlayer.Character)
-    end
-    VisibilityParams.FilterDescendantsInstances = ignoreList
-
-    local RaycastResult = Workspace:Raycast(Origin, Direction, VisibilityParams)
-
-    if not RaycastResult or not RaycastResult.Instance then return false end
-
-    local hitInst = RaycastResult.Instance
-
-    if hitInst == TargetPart then
-        return true
-    end
-
-    if hitInst.Parent:IsA("Accessory") and hitInst.Parent.Parent == TargetPart.Parent then
-        return true
-    end
-
-    return false
-end
 
 
 -- Fire single shot
@@ -2313,7 +2258,7 @@ local function updateTriggerbot()
                 end
             end
             
-            if hitPlayer and isEnemy(hitPlayer) then
+            if hitPlayer and isTriggerEnemy(hitPlayer) then
                 local hum = hitChar:FindFirstChildOfClass("Humanoid")
                 if hum and hum.Health > 0 then
                     if isStrictRayVisible(hitInstance) then
@@ -2343,7 +2288,7 @@ local function updateTriggerbot()
 
         for _, Player in ipairs(Players:GetPlayers()) do
             if Player == LocalPlayer then continue end
-            if not isEnemy(Player) then continue end
+            if not isTriggerEnemy(Player) then continue end
 
             local Character = Player.Character
             if not Character then continue end
@@ -2516,11 +2461,11 @@ end
 -- Get chams transparency
 local function getChamsTransparency()
     local SliderValue = Options.ESPChamsTransparency
-    if type(SliderValue) ~= "number" then
+    if type(SliderValue) ~= "table" then
         return 0.35
     end
 
-    return math.clamp(SliderValue / 100, 0, 1)
+    return math.clamp(SliderValue.Value / 100, 0, 1)
 end
 
 
@@ -2682,7 +2627,7 @@ local function updatePlayerEsp(Player)
         local fillY = barY + (barHeight - fillHeight)
         DrawingSet.HealthBarFill.Position = Vector2.new(barX + 1, fillY)
         DrawingSet.HealthBarFill.Size = Vector2.new(barWidth - 2, fillHeight)
-        DrawingSet.HealthBarFill.Color = Color3.fromRGB(0, 255, 0)
+        DrawingSet.HealthBarFill.Color = getOptionColor("ESPHealthBarColor", Color3.fromRGB(0, 255, 0))
         DrawingSet.HealthBarFill.Filled = true
         DrawingSet.HealthBarFill.Visible = true
     else
@@ -2854,8 +2799,13 @@ end)
 
 
 -- Kill All heartbeat
+local KillAllLastTime = 0
 EspRuntime.Connections.KillAllHeartbeat = RunService.Heartbeat:Connect(function()
-    updateKillAll()
+    local now = tick()
+    if now - KillAllLastTime >= (1 / 30) then
+        KillAllLastTime = now
+        updateKillAll()
+    end
 end)
 
 
