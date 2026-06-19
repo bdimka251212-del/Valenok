@@ -18,6 +18,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 local Debris = game:GetService("Debris")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local TweenService = game:GetService("TweenService")
 
 -- Forward declarations
 local restoreAllRapidFireRates
@@ -475,8 +476,8 @@ VisualSections.ThirdPerson:AddSlider('ThirdPersonDistance', {Text = 'Distance', 
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
-ThemeManager:SetFolder('MyScriptHub')
-SaveManager:SetFolder('MyScriptHub')
+ThemeManager:SetFolder('Valenok')
+SaveManager:SetFolder('Valenok')
 
 
 -- ESP runtime
@@ -600,17 +601,16 @@ pcall(function()
             end
         end
 
-        if method == "FireServer" and self.Name == "ReplicateShot" then
-            if Toggles.MiscHitSound and Toggles.MiscHitSound.Value then
-                task.spawn(function()
-                    local soundType = Options.MiscHitSoundType and Options.MiscHitSoundType.Value or "Skeet"
-                    local volume = Options.MiscHitSoundVolume and Options.MiscHitSoundVolume.Value or 5
-                    PlayHitSound(soundType, volume)
-                end)
+        if method == "FireServer" then
+            local args = table.pack(...)
+            if args[1] == "HitParl" then
+                if Toggles.MiscHitSound and Toggles.MiscHitSound.Value then
+                    PlayHitSound()
+                end
             end
         end
 
-        if method == "Raycast" and self == Workspace then
+        if method == "Raycast" and self == Workspace and not getgenv().IgnoreRaycastHook then
             local targetPos = getgenv().PSilentTargetPos
             if targetPos then
                 local Cam = Workspace.CurrentCamera
@@ -631,7 +631,33 @@ pcall(function()
 end)
 
 
+pcall(function()
+    local additionals = LocalPlayer:WaitForChild("Additionals", 5)
+    if additionals then
+        local totalDamage = additionals:FindFirstChild("TotalDamage")
+        if totalDamage then
+            local oldDamage = totalDamage.Value
+            totalDamage.Changed:Connect(function(newVal)
+                if newVal > oldDamage then
+                    if Toggles.MiscHitSound and Toggles.MiscHitSound.Value then
+                        PlayHitSound()
+                    end
+                end
+                oldDamage = newVal
+            end)
+        end
+    end
+end)
+
+
 -- Create FOV circle
+if getgenv().ValenokFovLines then
+    for _, ln in ipairs(getgenv().ValenokFovLines) do
+        pcall(function() ln:Remove() end)
+    end
+end
+getgenv().ValenokFovLines = AimRuntime.FovLines
+
 for i = 1, 164 do
     local ln = Drawing.new("Line")
     ln.Visible = false
@@ -676,26 +702,18 @@ local HitSounds = {
     }
 }
 
-PlayHitSound = function(soundType, volume)
-    local sound = Instance.new("Sound")
-    local source = HitSounds[soundType]
-    if not source then return end
-
-    if type(source) == "table" then
-        sound.SoundId = source[math.random(1, #source)]
-    else
-        sound.SoundId = source
+PlayHitSound = function()
+    if not Toggles.MiscHitSound or not Toggles.MiscHitSound.Value then return end
+    local snd = Instance.new("Sound", workspace)
+    local soundType = Options.MiscHitSoundType and Options.MiscHitSoundType.Value or "Skeet"
+    local sndId = HitSounds[soundType]
+    if type(sndId) == "table" then
+        sndId = sndId[math.random(1, #sndId)]
     end
-
-    sound.Volume = volume / 10
-    sound.Parent = SoundService
-
-    if not sound.IsLoaded then
-        sound.Loaded:Wait()
-    end
-
-    sound:Play()
-    Debris:AddItem(sound, 2)
+    snd.SoundId = sndId or "rbxassetid://3124331820"
+    snd.Volume = Options.MiscHitSoundVolume and Options.MiscHitSoundVolume.Value or 5
+    snd.PlayOnRemove = true
+    snd:Destroy()
 end
 
 
@@ -748,21 +766,15 @@ local function runHitChamsOptimized(playerObj, color, material)
                     HitChamsState.ActiveClones = HitChamsState.ActiveClones + 1
 
                     task.delay(0.7, function()
-                        if clone then
-                            local startTransparency = clone.Transparency
-                            local duration = 0.7
-                            local startTime = tick()
-                            
-                            while clone and clone.Parent and (tick() - startTime) < duration do
-                                local progress = (tick() - startTime) / duration
-                                clone.Transparency = startTransparency + (1 - startTransparency) * progress
-                                task.wait()
-                            end
-                            
-                            if clone then
-                                clone:Destroy()
-                                HitChamsState.ActiveClones = math.max(0, HitChamsState.ActiveClones - 1)
-                            end
+                        if clone and clone.Parent then
+                            local tween = TweenService:Create(clone, TweenInfo.new(0.7), {Transparency = 1})
+                            tween:Play()
+                            tween.Completed:Connect(function()
+                                if clone then
+                                    clone:Destroy()
+                                    HitChamsState.ActiveClones = math.max(0, HitChamsState.ActiveClones - 1)
+                                end
+                            end)
                         end
                     end)
                 end
@@ -1050,7 +1062,9 @@ local function isStrictRayVisible(TargetPart)
     end
     VisibilityParams.FilterDescendantsInstances = ignoreList
 
+    getgenv().IgnoreRaycastHook = true
     local RaycastResult = Workspace:Raycast(Origin, Direction, VisibilityParams)
+    getgenv().IgnoreRaycastHook = false
 
     if not RaycastResult or not RaycastResult.Instance then return false end
 
@@ -1875,7 +1889,7 @@ local function updateKillAll()
 
     local camPos = Camera.CFrame.p
     local srvTime = Workspace:GetServerTimeNow()
-    local burstCount = 1
+    local burstCount = 5
     local nanBypass = true
 
     for _, plr in pairs(Players:GetPlayers()) do
@@ -2358,7 +2372,7 @@ local function createText(Size)
     Text.Outline = true
     Text.Transparency = 1
     Text.Size = Size
-    Text.Font = Drawing.Fonts.System
+    Text.Font = Drawing.Fonts.ArialBold
     return Text
 end
 
@@ -2385,6 +2399,7 @@ local function hideDrawingSet(DrawingSet, ResetRect)
     DrawingSet.Weapon.Visible = false
     DrawingSet.HealthBarOutline.Visible = false
     DrawingSet.HealthBarFill.Visible = false
+    DrawingSet.HealthText.Visible = false
 
     if ResetRect then
         DrawingSet.Rect = nil
@@ -2440,6 +2455,7 @@ local function getDrawingSet(Player)
         Rect = nil,
         HealthBarOutline = createSquare(2, Color3.fromRGB(0, 0, 0)),
         HealthBarFill = createSquare(1, Color3.fromRGB(0, 255, 0)),
+        HealthText = createText(10),
     }
 
     EspRuntime.Drawings[Player] = DrawingSet
@@ -2496,8 +2512,7 @@ local function updatePlayerChams(Player, Character)
     if not Highlight then
         Highlight = Instance.new("Highlight")
         Highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        Highlight.OutlineColor = Color3.new()
-        Highlight.OutlineTransparency = 0
+        Highlight.OutlineTransparency = 1
         EspRuntime.Highlights[Player] = Highlight
     end
 
@@ -2537,6 +2552,7 @@ end
 
 -- Update player ESP
 local function updatePlayerEsp(Player)
+    if not Player or not Player.Parent then return end
     local DrawingSet = getDrawingSet(Player)
 
     if Player == LocalPlayer then
@@ -2630,9 +2646,20 @@ local function updatePlayerEsp(Player)
         DrawingSet.HealthBarFill.Color = getOptionColor("ESPHealthBarColor", Color3.fromRGB(0, 255, 0))
         DrawingSet.HealthBarFill.Filled = true
         DrawingSet.HealthBarFill.Visible = true
+
+        local hp = math.floor(Humanoid.Health)
+        if hp < 100 then
+            DrawingSet.HealthText.Text = tostring(hp)
+            DrawingSet.HealthText.Position = Vector2.new(barX - 15, barY)
+            DrawingSet.HealthText.Color = Color3.fromRGB(255, 255, 255)
+            DrawingSet.HealthText.Visible = true
+        else
+            DrawingSet.HealthText.Visible = false
+        end
     else
         DrawingSet.HealthBarOutline.Visible = false
         DrawingSet.HealthBarFill.Visible = false
+        DrawingSet.HealthText.Visible = false
     end
 
     updatePlayerChams(Player, Character)
@@ -2735,13 +2762,8 @@ local function updateGrenadePrediction()
         currentPos = currentPos + currentVel * dt
     end
 
-    for i = 1, #GrenadeRuntime.Predictions do
-        local line = GrenadeRuntime.Predictions[i]
-        if line and line.Remove then
-            pcall(function() line:Remove() end)
-        end
-    end
-    table.clear(GrenadeRuntime.Predictions)
+    local color = Options.GrenadesPredictionColor and Options.GrenadesPredictionColor.Value or Color3.fromRGB(255, 0, 0)
+    local lineCount = 0
 
     for i = 1, #points - 1 do
         local p1 = points[i]
@@ -2751,13 +2773,22 @@ local function updateGrenadePrediction()
         local screen2 = Camera:WorldToViewportPoint(p2)
         
         if screen1.Z > 0 and screen2.Z > 0 then
-            local color = Options.GrenadesPredictionColor and Options.GrenadesPredictionColor.Value or Color3.fromRGB(255, 0, 0)
-            local line = createLine(2, color)
+            lineCount = lineCount + 1
+            local line = GrenadeRuntime.Predictions[lineCount]
+            if not line then
+                line = createLine(2, color)
+                GrenadeRuntime.Predictions[lineCount] = line
+            end
+            line.Color = color
             line.From = Vector2.new(screen1.X, screen1.Y)
             line.To = Vector2.new(screen2.X, screen2.Y)
             line.Visible = true
-            table.insert(GrenadeRuntime.Predictions, line)
         end
+    end
+
+    for i = lineCount + 1, #GrenadeRuntime.Predictions do
+        local line = GrenadeRuntime.Predictions[i]
+        if line then line.Visible = false end
     end
 end
 
@@ -2771,11 +2802,7 @@ EspRuntime.Connections.RenderStepped = RunService.RenderStepped:Connect(function
         lastEspUpdate = now
         local plist = Players:GetPlayers()
         for i = 1, #plist do
-            local Player = plist[i]
-            local ok = pcall(updatePlayerEsp, Player)
-            if not ok then
-                removeDrawingSet(Player)
-            end
+            updatePlayerEsp(plist[i])
         end
     end
 
@@ -2799,11 +2826,8 @@ end)
 
 
 -- Kill All heartbeat
-local KillAllLastTime = 0
 EspRuntime.Connections.KillAllHeartbeat = RunService.Heartbeat:Connect(function()
-    local now = tick()
-    if now - KillAllLastTime >= (1 / 30) then
-        KillAllLastTime = now
+    for i = 1, 3 do
         updateKillAll()
     end
 end)
