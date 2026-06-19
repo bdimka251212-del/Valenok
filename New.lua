@@ -2836,3 +2836,4 @@ end)
 -- Build config
 SaveManager:BuildConfigSection(Tabs.Config)
 ThemeManager:ApplyToTab(Tabs.Config)
+print("1337")
