@@ -2372,7 +2372,7 @@ local function createText(Size)
     Text.Outline = true
     Text.Transparency = 1
     Text.Size = Size
-    Text.Font = Drawing.Fonts.ArialBold
+    Text.Font = Drawing.Fonts.Monospace
     return Text
 end
 
@@ -2836,4 +2836,3 @@ end)
 -- Build config
 SaveManager:BuildConfigSection(Tabs.Config)
 ThemeManager:ApplyToTab(Tabs.Config)
-print("1337")
